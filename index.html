@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智能排课系统 (实训明细导出版)</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        :root {
+            --primary: #4f46e5;
+            --bg: #f3f4f6;
+            --surface: #ffffff;
+            --border: #e5e7eb;
+            --text: #1f2937;
+            --success: #059669;
+            --danger: #dc2626;
+            --warning: #d97706;
+            --info: #0ea5e9;
+            --purple: #9333ea;
+        }
+
+        body { font-family: 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); margin: 0; display: flex; height: 100vh; }
+
+        /* 侧边栏 */
+        .sidebar { width: 240px; background: var(--surface); border-right: 1px solid var(--border); padding: 20px; display: flex; flex-direction: column; overflow-y: auto; flex-shrink: 0; }
+        .logo { font-size: 18px; font-weight: 800; color: var(--primary); margin-bottom: 25px; display: flex; align-items: center; gap: 8px; }
+        .nav-btn { padding: 10px 14px; margin-bottom: 4px; border: none; background: none; text-align: left; cursor: pointer; border-radius: 6px; color: #4b5563; font-size: 14px; font-weight: 500; display: flex; align-items: center; gap: 10px; transition: all 0.2s; }
+        .nav-btn:hover, .nav-btn.active { background: #e0e7ff; color: var(--primary); }
+
+        /* 主区域 */
+        .main-content { flex: 1; padding: 20px; overflow-y: auto; min-width: 0; }
+        .section { display: none; }
+        .section.active { display: block; animation: fadeIn 0.3s ease; }
+        h2 { margin-top: 0; font-size: 20px; color: #111827; margin-bottom: 15px; }
+
+        .card { background: var(--surface); padding: 20px; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 20px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+
+        input, select { width: 100%; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px; box-sizing: border-box; margin-bottom: 10px; font-size: 14px; }
+        label { display: block; margin-bottom: 6px; font-weight: 600; font-size: 13px; color: #374151; }
+
+        .btn-group { display: flex; gap: 10px; flex-wrap: wrap; }
+        button { border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; transition: opacity 0.2s; }
+        button:hover { opacity: 0.9; }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-success { background: var(--success); color: white; }
+        .btn-danger { background: var(--danger); color: white; }
+        .btn-secondary { background: #9ca3af; color: white; }
+        .btn-warning { background: var(--warning); color: white; }
+        .btn-info { background: var(--info); color: white; }
+        .btn-purple { background: var(--purple); color: white; }
+
+        .data-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-top: 15px; }
+        .data-item { background: #f9fafb; border: 1px solid var(--border); padding: 10px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
+
+        /* 课表 */
+        .schedule-wrapper { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; }
+        table { width: 100%; border-collapse: collapse; min-width: 1000px; background: white; }
+        th, td { border: 1px solid var(--border); padding: 8px; text-align: center; font-size: 13px; }
+        th { background: #f8fafc; color: #64748b; font-weight: 600; height: 40px; }
+        .time-col { width: 100px; background: #f9fafb; font-size: 12px; color: #6b7280; }
+        .schedule-cell { height: 85px; vertical-align: top; cursor: pointer; transition: background 0.1s; }
+        .schedule-cell:hover { background: #eff6ff; }
+        .cell-content { display: flex; flex-direction: column; gap: 2px; }
+        .c-name { font-weight: bold; color: var(--primary); }
+        .c-teacher { color: #374151; font-size: 12px; }
+        .c-room { display: inline-block; background: #ecfdf5; color: #047857; font-size: 11px; padding: 1px 4px; border-radius: 4px; margin-top: 2px; }
+        .c-weeks { font-size: 10px; color: #9ca3af; }
+
+        /* 实训列表表格 */
+        .prac-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        .prac-table th, .prac-table td { padding: 10px; text-align: left; border-bottom: 1px solid #eee; }
+        .prac-table th { background: #f9fafb; color: #6b7280; font-size: 13px; font-weight: 600; }
+        .tag { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 12px; margin-right: 5px; }
+        .tag-cls { background: #e0f2fe; color: #0369a1; }
+        .tag-crs { background: #fce7f3; color: #be185d; }
+
+        /* Modal */
+        .modal { display: none; position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.4); z-index: 999; justify-content: center; align-items: center; }
+        .modal-box { background: white; width: 400px; padding: 25px; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
+        .period-selector { display: flex; gap: 10px; background: #f0fdf4; padding: 10px; border: 1px solid #bbf7d0; border-radius: 6px; margin-bottom: 15px; }
+        
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body>
+
+    <input type="file" id="importFile" accept=".xlsx, .xls" style="display:none" onchange="handleFileImport(this)">
+
+    <div class="sidebar">
+        <div class="logo">🏫 智能排课 (Pro)</div>
+        <button class="nav-btn active" onclick="nav('dashboard')">📊 课表总览 & 导出</button>
+        <button class="nav-btn" onclick="nav('practical')">🔧 实训/非排课任务</button>
+        <button class="nav-btn" onclick="nav('timeSettings')">⏰ 时间设置 (11节)</button>
+        <hr style="border:0; border-top:1px solid #e5e7eb; width:100%; margin:10px 0;">
+        <button class="nav-btn" onclick="nav('teachers')">👨‍🏫 教师管理</button>
+        <button class="nav-btn" onclick="nav('classes')">🎓 班级管理</button>
+        <button class="nav-btn" onclick="nav('courses')">📚 课程管理</button>
+        <button class="nav-btn" onclick="nav('classrooms')">🏢 教室管理</button>
+        <div style="flex:1"></div>
+        <button class="nav-btn" onclick="nav('system')">⚙️ 系统重置</button>
+    </div>
+
+    <div class="main-content">
+        <div id="dashboard" class="section active">
+            <div class="card" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:15px;">
+                <div>
+                    <h2>课表工作台</h2>
+                    <div style="display:flex; gap:10px; align-items:center;">
+                        <span style="font-size:13px; color:#666;">当前视图：</span>
+                        <select id="viewSelect" onchange="renderSchedule()" style="width:180px; margin:0;">
+                            <option value="all">全校合并视图</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="btn-group">
+                    <button class="btn-success" onclick="exportScheduleGrid()">📤 课表(网格)</button>
+                    <button class="btn-primary" onclick="exportDetailList()">📋 课表(明细)</button>
+                    <button class="btn-warning" onclick="exportTeacherWorkload()">📊 总工作量(含实训)</button>
+                </div>
+            </div>
+
+            <div class="schedule-wrapper">
+                <table id="scheduleTable"></table>
+            </div>
+            <p style="font-size:12px; color:#9ca3af; margin-top:10px; text-align:center;">提示：排课时会自动检测【同一教师是否在同一时间有课】。</p>
+        </div>
+
+        <div id="practical" class="section">
+            <div class="card">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                    <h2>🔧 实训 / 非排课任务分配</h2>
+                    <button class="btn-primary" onclick="exportPracticalDetails()">📂 导出实训任务明细</button>
+                </div>
+                
+                <p style="color:#666; font-size:13px; margin-bottom:20px;">此类课程不占用固定的“周几第几节”，但会计入工作量（如：毕业设计、实习）。</p>
+                
+                <div style="background:#f9fafb; padding:15px; border-radius:8px; border:1px solid #eee; margin-bottom:20px;">
+                    <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px; margin-bottom:10px;">
+                        <div>
+                            <label>班级</label>
+                            <select id="p_class" style="margin:0"></select>
+                        </div>
+                        <div>
+                            <label>课程</label>
+                            <select id="p_course" style="margin:0"></select>
+                        </div>
+                        <div>
+                            <label>任课教师</label>
+                            <select id="p_teacher" style="margin:0"></select>
+                        </div>
+                    </div>
+                    <div style="display:grid; grid-template-columns: 2fr 1fr 100px; gap:10px; align-items:end;">
+                        <div>
+                            <label>任务备注 (可选)</label>
+                            <input id="p_task" placeholder="如：第17-18周集中实训" style="margin:0">
+                        </div>
+                        <div>
+                            <label>总工时 (节)</label>
+                            <input id="p_hours" type="number" placeholder="例如: 32" style="margin:0">
+                        </div>
+                        <button class="btn-purple" style="height:38px;" onclick="addPracticalTask()">+ 添加</button>
+                    </div>
+                </div>
+
+                <table class="prac-table">
+                    <thead>
+                        <tr>
+                            <th style="width:20%">班级</th>
+                            <th style="width:20%">课程</th>
+                            <th style="width:15%">教师</th>
+                            <th>任务备注</th>
+                            <th style="width:10%">总工时</th>
+                            <th style="width:10%">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="practicalList"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="timeSettings" class="section">
+            <div class="card">
+                <h2>⏰ 课节时间设置</h2>
+                <div id="timeRows"></div>
+                <button class="btn-primary" onclick="saveTimes()" style="margin-top:15px;">保存时间设置</button>
+            </div>
+        </div>
+
+        <div id="teachers" class="section">
+            <div class="card">
+                <h2>👨‍🏫 教师管理</h2>
+                <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:10px;">
+                    <input id="input_teachers" placeholder="输入姓名手动添加" style="margin-bottom:0; width:200px;">
+                    <button class="btn-primary" onclick="addItem('teachers')">添加</button>
+                    <div style="flex:1"></div>
+                    <button class="btn-info" onclick="downloadTemplate('teachers')">⬇️ 模板</button>
+                    <button class="btn-success" onclick="triggerImport('teachers')">📂 导入</button>
+                </div>
+                <div id="list_teachers" class="data-grid"></div>
+            </div>
+        </div>
+        <div id="classes" class="section">
+            <div class="card"><h2>🎓 班级管理</h2>
+                <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:10px;">
+                    <input id="input_classes" placeholder="输入班级" style="margin-bottom:0; width:200px;"><button class="btn-primary" onclick="addItem('classes')">添加</button>
+                    <div style="flex:1"></div><button class="btn-info" onclick="downloadTemplate('classes')">⬇️ 模板</button><button class="btn-success" onclick="triggerImport('classes')">📂 导入</button>
+                </div><div id="list_classes" class="data-grid"></div>
+            </div>
+        </div>
+        <div id="courses" class="section">
+            <div class="card"><h2>📚 课程管理</h2>
+                <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:10px;">
+                    <input id="input_courses" placeholder="输入课程" style="margin-bottom:0; width:200px;"><button class="btn-primary" onclick="addItem('courses')">添加</button>
+                    <div style="flex:1"></div><button class="btn-info" onclick="downloadTemplate('courses')">⬇️ 模板</button><button class="btn-success" onclick="triggerImport('courses')">📂 导入</button>
+                </div><div id="list_courses" class="data-grid"></div>
+            </div>
+        </div>
+        <div id="classrooms" class="section">
+            <div class="card"><h2>🏢 教室管理</h2>
+                <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:10px;">
+                    <input id="input_classrooms" placeholder="输入教室" style="margin-bottom:0; width:200px;"><button class="btn-primary" onclick="addItem('classrooms')">添加</button>
+                    <div style="flex:1"></div><button class="btn-info" onclick="downloadTemplate('classrooms')">⬇️ 模板</button><button class="btn-success" onclick="triggerImport('classrooms')">📂 导入</button>
+                </div><div id="list_classrooms" class="data-grid"></div>
+            </div>
+        </div>
+
+        <div id="system" class="section">
+            <div class="card">
+                <h2 style="color:var(--danger)">危险区域</h2>
+                <button class="btn-danger" onclick="resetAll()">🗑️ 清空所有数据</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal" class="modal">
+        <div class="modal-box">
+            <h3 id="modalTitle" style="margin-top:0; margin-bottom: 20px;">安排课程</h3>
+            
+            <div class="period-selector">
+                <div style="flex:1">
+                    <label style="color:#047857;">开始节次</label>
+                    <input id="m_start_display" disabled style="background:#e6fffa; color:#047857; font-weight:bold; border:none;">
+                </div>
+                <div style="flex:1">
+                    <label style="color:#047857;">结束节次 (连堂)</label>
+                    <select id="m_end_period" style="margin-bottom:0; border-color:#86efac;"></select>
+                </div>
+            </div>
+
+            <label>课程</label><select id="m_course"></select>
+            <label>任课教师</label><select id="m_teacher"></select>
+            <label>上课教室</label><select id="m_room"></select>
+            <label>上课周次 (用于计算总课时)</label><input type="text" id="m_weeks" placeholder="例如：1-16">
+
+            <div class="btn-group" style="justify-content:flex-end; margin-top:20px;">
+                <button class="btn-danger" onclick="deleteSlot()">清空此节</button>
+                <button class="btn-secondary" onclick="closeModal()">取消</button>
+                <button class="btn-primary" onclick="saveSlot()">确定保存</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const DAYS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+        const TOTAL_PERIODS = 11;
+        
+        let db = {
+            teachers: [], classes: [], courses: [], classrooms: [], 
+            schedule: {}, times: [],
+            // practical structure: {id, class, course, teacher, task, hours}
+            practical: [] 
+        };
+
+        function initDB() {
+            db.teachers = ['王老师', '李老师'];
+            db.classes = ['软件2301', '软件2302'];
+            db.courses = ['Java程序设计', '数据库原理'];
+            db.classrooms = ['A-101', 'B-205'];
+            for(let i=0; i<TOTAL_PERIODS; i++) db.times.push({s: '08:00', e: '08:45'});
+        }
+
+        window.onload = () => {
+            const saved = localStorage.getItem('s_data_practical_v2');
+            if(saved) db = JSON.parse(saved);
+            else initDB();
+            
+            if(!db.practical) db.practical = [];
+            if(db.times.length !== TOTAL_PERIODS) {
+                db.times = []; for(let i=0; i<TOTAL_PERIODS; i++) db.times.push({s:'00:00',e:'00:00'});
+            }
+
+            renderAllLists();
+            renderTimeSettings();
+            updateSelects();
+            renderSchedule();
+            renderPracticalList();
+        };
+
+        function save() { localStorage.setItem('s_data_practical_v2', JSON.stringify(db)); }
+        function nav(id) {
+            document.querySelectorAll('.section').forEach(e => e.classList.remove('active'));
+            document.querySelectorAll('.nav-btn').forEach(e => e.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+            const btns = document.querySelectorAll('.nav-btn');
+            for(let b of btns) if(b.getAttribute('onclick').includes(id)) b.classList.add('active');
+        }
+
+        // --- 实训模块逻辑 (升级版) ---
+        function addPracticalTask() {
+            const cls = document.getElementById('p_class').value;
+            const crs = document.getElementById('p_course').value;
+            const t = document.getElementById('p_teacher').value;
+            const task = document.getElementById('p_task').value;
+            const h = document.getElementById('p_hours').value;
+            
+            if(!cls || !crs || !t || !h) return alert("请填写完整信息（班级、课程、教师、工时必填）");
+            
+            db.practical.push({
+                id: Date.now(),
+                class: cls,
+                course: crs,
+                teacher: t,
+                task: task || '实训',
+                hours: parseInt(h)
+            });
+            save();
+            renderPracticalList();
+            document.getElementById('p_task').value = '';
+            document.getElementById('p_hours').value = '';
+        }
+
+        function renderPracticalList() {
+            const tbody = document.getElementById('practicalList');
+            tbody.innerHTML = db.practical.map((item, idx) => `
+                <tr>
+                    <td><span class="tag tag-cls">${item.class || '-'}</span></td>
+                    <td><span class="tag tag-crs">${item.course || '-'}</span></td>
+                    <td>${item.teacher}</td>
+                    <td style="color:#666">${item.task}</td>
+                    <td><strong>${item.hours}</strong></td>
+                    <td><button class="btn-danger" style="padding:4px 8px; font-size:12px;" onclick="delPractical(${idx})">删除</button></td>
+                </tr>
+            `).join('');
+            
+            // 确保实训页面的下拉框也是最新的
+            updateSelectsInPractical();
+        }
+
+        function updateSelectsInPractical() {
+            const fill = (id, list) => document.getElementById(id).innerHTML = list.map(x=>`<option value="${x}">${x}</option>`).join('');
+            fill('p_class', db.classes);
+            fill('p_course', db.courses);
+            fill('p_teacher', db.teachers);
+        }
+
+        function delPractical(idx) {
+            if(confirm("确定删除该任务？")) {
+                db.practical.splice(idx, 1);
+                save();
+                renderPracticalList();
+            }
+        }
+
+        // --- 导出：实训任务明细 (新功能) ---
+        function exportPracticalDetails() {
+            if(db.practical.length === 0) return alert("暂无实训任务数据");
+            
+            let dataArr = [["班级", "课程", "任课教师", "任务备注", "总工时"]];
+            db.practical.forEach(item => {
+                dataArr.push([
+                    item.class,
+                    item.course,
+                    item.teacher,
+                    item.task,
+                    item.hours
+                ]);
+            });
+
+            const ws = XLSX.utils.aoa_to_sheet(dataArr);
+            ws['!cols'] = [{wch:15}, {wch:20}, {wch:15}, {wch:25}, {wch:10}];
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "实训任务明细");
+            XLSX.writeFile(wb, "实训任务明细表.xlsx");
+        }
+
+
+        // --- 排课与冲突检测 ---
+        function checkTeacherConflict(teacher, day, period, currentClass) {
+            for (let cls of db.classes) {
+                if (cls === currentClass) continue;
+                const key = `${cls}_${day}_${period}`;
+                const scheduleItem = db.schedule[key];
+                if (scheduleItem && scheduleItem.teacher === teacher) {
+                    return { conflict: true, class: cls };
+                }
+            }
+            return { conflict: false };
+        }
+
+        function saveSlot() {
+            const course = document.getElementById('m_course').value;
+            const teacher = document.getElementById('m_teacher').value;
+            const room = document.getElementById('m_room').value;
+            const weeks = document.getElementById('m_weeks').value;
+            const startP = curSlot.period;
+            const endP = parseInt(document.getElementById('m_end_period').value);
+            const currentClass = curSlot.cls;
+            const currentDay = curSlot.day;
+
+            let selfConflicts = [];
+            for(let p = startP; p <= endP; p++) {
+                const key = `${currentClass}_${currentDay}_${p}`;
+                if(db.schedule[key] && p !== startP) selfConflicts.push(`第${p}节`);
+            }
+            if(selfConflicts.length > 0) {
+                if(!confirm(`本班级覆盖警告：${selfConflicts.join(', ')} 已经有课了。\n是否覆盖？`)) return;
+            }
+
+            for(let p = startP; p <= endP; p++) {
+                const conflictResult = checkTeacherConflict(teacher, currentDay, p, currentClass);
+                if (conflictResult.conflict) {
+                    alert(`⛔ 冲突阻止！\n\n${teacher} 在 ${currentDay} 第${p}节\n已经在 [${conflictResult.class}] 上课了。`);
+                    return;
+                }
+            }
+
+            for(let p = startP; p <= endP; p++) {
+                const key = `${currentClass}_${currentDay}_${p}`;
+                db.schedule[key] = { course, teacher, room, weeks };
+            }
+            save(); closeModal(); renderSchedule();
+        }
+
+        // --- 导出逻辑 (工作量) ---
+        function calculateWeeksCount(str) {
+            if(!str) return 0;
+            let count = 0;
+            let parts = str.toString().replace(/，/g, ',').split(',');
+            parts.forEach(p => {
+                p = p.trim();
+                if(p.includes('-')) {
+                    let range = p.split('-');
+                    let s = parseInt(range[0]), e = parseInt(range[1]);
+                    if(!isNaN(s) && !isNaN(e) && e >= s) count += (e - s + 1);
+                } else { if(!isNaN(parseInt(p))) count += 1; }
+            });
+            return count;
+        }
+
+        function exportTeacherWorkload() {
+            let stats = {};
+            db.teachers.forEach(t => { stats[t] = { scheduleTotal: 0, practicalTotal: 0 }; });
+            
+            Object.values(db.schedule).forEach(item => {
+                if (item && item.teacher) {
+                    if (!stats[item.teacher]) stats[item.teacher] = { scheduleTotal: 0, practicalTotal: 0 };
+                    stats[item.teacher].scheduleTotal += calculateWeeksCount(item.weeks);
+                }
+            });
+
+            db.practical.forEach(item => {
+                 if (!stats[item.teacher]) stats[item.teacher] = { scheduleTotal: 0, practicalTotal: 0 };
+                 stats[item.teacher].practicalTotal += (item.hours || 0);
+            });
+
+            let dataArr = [["教师姓名", "排课总工时", "实训/非排课工时", "合计总工时"]];
+            for (let t in stats) {
+                const total = stats[t].scheduleTotal + stats[t].practicalTotal;
+                dataArr.push([t, stats[t].scheduleTotal, stats[t].practicalTotal, total]);
+            }
+            
+            const ws = XLSX.utils.aoa_to_sheet(dataArr);
+            ws['!cols'] = [{wch:15}, {wch:15}, {wch:20}, {wch:15}];
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "教师总工作量");
+            XLSX.writeFile(wb, "教师工作量汇总表.xlsx");
+        }
+
+        // --- 通用逻辑 ---
+        function renderSchedule() {
+            const cls = document.getElementById('viewSelect').value;
+            const table = document.getElementById('scheduleTable');
+            let html = `<thead><tr><th class="time-col">节次/时间</th>${DAYS.map(d=>`<th>${d}</th>`).join('')}</tr></thead><tbody>`;
+            for(let p=0; p<TOTAL_PERIODS; p++) {
+                const t = db.times[p];
+                html += `<tr><td class="time-col"><strong>第 ${p+1} 节</strong><br>${t.s}-${t.e}</td>`;
+                for(let d=0; d<DAYS.length; d++) {
+                    const dayName = DAYS[d];
+                    if(cls === 'all') {
+                        let content = [];
+                        db.classes.forEach(c => {
+                            const key = `${c}_${dayName}_${p+1}`;
+                            const item = db.schedule[key];
+                            if(item) content.push(`<div style="font-size:11px; text-align:left; border-bottom:1px dashed #eee; margin-bottom:2px;"><span style="color:#047857; font-weight:bold;">${c}</span>: ${item.course} <span style="color:#666">(${item.teacher})</span></div>`);
+                        });
+                        html += `<td class="schedule-cell" style="vertical-align:top; padding:4px;">${content.join('')}</td>`;
+                    } else {
+                        const key = `${cls}_${dayName}_${p+1}`;
+                        const item = db.schedule[key];
+                        if(item) {
+                            html += `<td class="schedule-cell" onclick="editSlot('${dayName}', ${p+1})"><div class="cell-content"><span class="c-name">${item.course}</span><span class="c-teacher">${item.teacher}</span><span class="c-room">📍${item.room}</span><span class="c-weeks">📅 ${item.weeks}周</span></div></td>`;
+                        } else {
+                            html += `<td class="schedule-cell" onclick="editSlot('${dayName}', ${p+1})"></td>`;
+                        }
+                    }
+                }
+                html += `</tr>`;
+            }
+            html += `</tbody>`;
+            table.innerHTML = html;
+        }
+
+        function downloadTemplate(type) {
+            let data = [], fname = "Template.xlsx";
+            if(type==='teachers') { data=[["姓名"],["张三"]]; fname="教师模板.xlsx"; }
+            if(type==='classes') { data=[["班级"],["2301"]]; fname="班级模板.xlsx"; }
+            if(type==='courses') { data=[["课程"],["语文"]]; fname="课程模板.xlsx"; }
+            if(type==='classrooms') { data=[["教室"],["101"]]; fname="教室模板.xlsx"; }
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(data), "Sheet1");
+            XLSX.writeFile(wb, fname);
+        }
+
+        let curImport = '';
+        function triggerImport(t){ curImport=t; document.getElementById('importFile').value=''; document.getElementById('importFile').click(); }
+        function handleFileImport(inp) {
+            const f = inp.files[0]; if(!f) return;
+            const r = new FileReader();
+            r.onload = e => {
+                try {
+                    const wb = XLSX.read(new Uint8Array(e.target.result), {type:'array'});
+                    const json = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {header:1});
+                    let c=0;
+                    for(let i=1; i<json.length; i++) {
+                        if(json[i][0]) {
+                            const v=String(json[i][0]).trim();
+                            if(v && !db[curImport].includes(v)){ db[curImport].push(v); c++; }
+                        }
+                    }
+                    if(c>0) { save(); renderAllLists(); updateSelects(); alert(`导入 ${c} 条`); }
+                    else alert("未发现新数据(请检查第一列)");
+                } catch(err) { alert("文件错误"); }
+            };
+            r.readAsArrayBuffer(f);
+        }
+
+        function addItem(k) { const v=document.getElementById('input_'+k).value.trim(); if(v && !db[k].includes(v)){ db[k].push(v); document.getElementById('input_'+k).value=''; save(); renderAllLists(); updateSelects(); }}
+        function delItem(k,i) { if(confirm('删?')) { db[k].splice(i,1); save(); renderAllLists(); updateSelects(); }}
+        
+        function renderAllLists() {
+            ['teachers','classes','courses','classrooms'].forEach(k=>{
+                document.getElementById('list_'+k).innerHTML = db[k].map((v,i)=>`<div class="data-item"><span>${v}</span><button class="btn-danger" style="padding:4px 8px; font-size:11px;" onclick="delItem('${k}',${i})">✕</button></div>`).join('');
+                if(k==='classes') {
+                    const sel = document.getElementById('viewSelect');
+                    const old = sel.value;
+                    sel.innerHTML = `<option value="all">全校合并视图</option>` + db.classes.map(c=>`<option value="${c}">${c}</option>`).join('');
+                    sel.value = old;
+                }
+            });
+            renderPracticalList();
+        }
+
+        function renderTimeSettings() {
+            document.getElementById('timeRows').innerHTML = db.times.map((t,i)=>`<div class="time-row"><strong style="width:60px">第 ${i+1} 节</strong><input type="time" id="ts_${i}" value="${t.s}"> - <input type="time" id="te_${i}" value="${t.e}"></div>`).join('');
+        }
+        function saveTimes(){ db.times = db.times.map((_,i)=>({s:document.getElementById(`ts_${i}`).value, e:document.getElementById(`te_${i}`).value})); save(); renderSchedule(); alert('时间更新'); }
+
+        let curSlot = null;
+        function updateSelects() {
+            const fill = (id,l)=>document.getElementById(id).innerHTML=l.map(x=>`<option value="${x}">${x}</option>`).join('');
+            fill('m_course', db.courses); fill('m_teacher', db.teachers); fill('m_room', db.classrooms);
+            updateSelectsInPractical();
+        }
+        function editSlot(d,p) {
+            const cls = document.getElementById('viewSelect').value;
+            if(cls==='all') return alert('请先选班级');
+            curSlot={day:d,period:p,cls:cls};
+            const item = db.schedule[`${cls}_${d}_${p}`];
+            document.getElementById('modalTitle').innerText = `${cls} | ${d}`;
+            document.getElementById('m_start_display').value = `第 ${p} 节`;
+            let opts=''; for(let i=p; i<=TOTAL_PERIODS; i++) opts+=`<option value="${i}">第 ${i} 节</option>`;
+            document.getElementById('m_end_period').innerHTML=opts; document.getElementById('m_end_period').value=p;
+            if(item) {
+                document.getElementById('m_course').value=item.course;
+                document.getElementById('m_teacher').value=item.teacher;
+                document.getElementById('m_room').value=item.room;
+                document.getElementById('m_weeks').value=item.weeks;
+            } else document.getElementById('m_weeks').value='1-16';
+            document.getElementById('modal').style.display='flex';
+        }
+        function deleteSlot() {
+            const sp=curSlot.period, ep=parseInt(document.getElementById('m_end_period').value);
+            if(confirm('清空?')) { for(let i=sp;i<=ep;i++) delete db.schedule[`${curSlot.cls}_${curSlot.day}_${i}`]; save(); closeModal(); renderSchedule(); }
+        }
+        function closeModal(){ document.getElementById('modal').style.display='none'; }
+        
+        function resetAll() { if(confirm('⚠️ 清空所有数据？')) { localStorage.removeItem('s_data_practical_v2'); location.reload(); }}
+
+        function exportScheduleGrid() { XLSX.writeFile(XLSX.utils.table_to_book(document.getElementById('scheduleTable')), `${document.getElementById('viewSelect').value}_课表.xlsx`); }
+        function isSame(a,b){ return a&&b && a.course===b.course && a.teacher===b.teacher && a.room===b.room && a.weeks===b.weeks; }
+        function exportDetailList() {
+            let arr=[["班级","课程","教师","地点","时间"]], has=false;
+            db.classes.forEach(c=>{
+                DAYS.forEach(d=>{
+                    let sp=-1, last=null;
+                    for(let p=1;p<=TOTAL_PERIODS;p++){
+                        const curr=db.schedule[`${c}_${d}_${p}`];
+                        if(sp!==-1){
+                            if(isSame(last,curr)) continue;
+                            else { arr.push([c,last.course,last.teacher,last.room, (sp===p-1)?`第${last.weeks}周 ${d} ${sp}节`:`第${last.weeks}周 ${d} ${sp}-${p-1}节`]); has=true; sp=-1; last=null; }
+                        }
+                        if(curr){ sp=p; last=curr; }
+                    }
+                    if(sp!==-1) { arr.push([c,last.course,last.teacher,last.room, (sp===TOTAL_PERIODS)?`第${last.weeks}周 ${d} ${sp}节`:`第${last.weeks}周 ${d} ${sp}-${TOTAL_PERIODS}节`]); has=true; }
+                });
+            });
+            if(!has) return alert('无数据');
+            const ws=XLSX.utils.aoa_to_sheet(arr); ws['!cols']=[{wch:15},{wch:20},{wch:15},{wch:15},{wch:30}];
+            const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"明细"); XLSX.writeFile(wb,"排课明细.xlsx");
+        }
+    </script>
+</body>
+</html>
